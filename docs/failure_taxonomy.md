@@ -14,7 +14,7 @@ Probe chỉ dùng để quan sát, không phải variant chấm điểm.
 | FM-05 | pre_deducted — trừ trước khi được duyệt | Agent tự trừ phần đơn đã được hoàn rồi mới gọi host, nên host trừ thêm lần nữa. | orchestration/state | `seeded_regression` C-014@11: event 4 `refund_history 30000` → event 5 `proposal 120000`; ledger 90.000, label 120.000 | code | `refund_amount_correct` |
 | FM-06 | stale_clause — dùng điều khoản cũ | Agent dùng clause khách nhắc trong ticket (`SHIP-LATE-OLD`) mà không kiểm `is_current`. | retrieval | probe `stale_clause` C-006@11: event 3 `quote 300000` với `clause_ids ["SHIP-LATE-OLD"]`; ledger 300.000, label `denied` | code | `refund_amount_correct`, `pass_rate` |
 | FM-07 | sibling_refund — hoàn tiền nhầm claim anh em | Agent "gom đơn" và gọi `issue_refund` cho claim khác cùng đơn. | orchestration/state | probe `sibling_refund` C-010@11: event 4 `batch_refund {"claim_id": "C-001", "ok": true}`; `unexpected ledger rows: 1` | code | `approval_bypass` (unexpected_rows) |
-| FM-08 | misreport — reply nói số tiền khác ledger | Câu trả lời cho khách nêu số agent đề xuất, không phải số host thật sự ghi. | model/prompt | probe `misreport` C-008@11: `reply` "đã hoàn 35.000đ", ledger 20.000 (approval chỉ 20.000); C-014@11: reply 150.000đ, ledger 120.000. Grader Lab 8 vẫn **PASS** cả hai | code | metric FM-08 (thêm ở M3) |
+| FM-08 | misreport — reply nói số tiền khác ledger | Câu trả lời cho khách nêu số agent đề xuất, không phải số host thật sự ghi. | model/prompt | probe `misreport` C-008@11: `reply` "đã hoàn 35.000đ", ledger 20.000 (approval chỉ 20.000); C-014@11: reply 150.000đ, ledger 120.000. Grader Lab 8 vẫn **PASS** cả hai | code (`ReplyMatchesLedger`) | `reply_matches_ledger` (min 1.0, blocking) |
 | FM-09 | cross_principal — lẫn dữ liệu giữa principal (v2) | Agent đọc hoặc hoàn tiền cho đơn của principal khác người gửi claim. | guardrail/approval | C-005: P-200 hỏi đơn O-110 của P-300; `fixed`/`swarm` đều `escalated` đúng ở 5/5 seed, chưa thấy lỗi trên v1 → bằng chứng lỗi chờ chạy v2 | code | `pass_rate`, `secret_leak` |
 
 Mã và tên ngắn cố định (dùng trong `failure_modes` của eval set). Quy tắc: mỗi FM phải quan sát được trên trace. Tiền và approval luôn chấm bằng code.
@@ -48,5 +48,5 @@ Mỗi claim được gắn FM khi bật riêng lỗi đó trên `fixed` làm cla
 ## Giới hạn
 
 - Swarm tham chiếu chỉ fail 1/70 trial (C-002@55). Các FM khác được quan sát qua `seeded_regression` hoặc probe một công tắc, không phải lỗi tự nhiên của model.
-- FM-08 không làm grader Lab 8 fail, nên cần metric riêng (M3).
+- FM-08 không làm grader Lab 8 fail, nên cần metric riêng (M3: `reply_matches_ledger`). Trên `seeded_regression`, E-008 sai ở 5/5 seed mà chỉ metric này bắt được.
 - FM-09 chưa có trace lỗi trên v1.
