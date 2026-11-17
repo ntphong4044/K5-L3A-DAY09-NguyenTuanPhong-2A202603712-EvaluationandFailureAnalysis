@@ -18,6 +18,7 @@ Card này đi kèm mỗi báo cáo và được dùng lại ở Day 10. Mọi s�
 | db_fact_kept | năng lực (bước) | min 0.95 | không |
 | pass_5 | theo dõi | min 0.80 | không |
 | cost_per_success | hệ thống | tăng ≤ 10% | không |
+| host_decision_kept (FM-05/FM-02) | năng lực (trajectory) | min 1.0 | không |
 
 "Không giảm có ý nghĩa": CI 95% paired bootstrap (1000 lần lấy mẫu, percentile, rng 2027) của Δ = PR − baseline, tính trên trung bình theo item, không được nằm hoàn toàn dưới 0.
 
@@ -30,13 +31,15 @@ Card này đi kèm mỗi báo cáo và được dùng lại ở Day 10. Mọi s�
 | pass_rate | 0.9857 | 1.0 (Δ +0.014, CI [+0.000, +0.043]) | 0.7143 (Δ −0.271, CI [−0.500, −0.057]) **BLOCK** |
 | reply_matches_ledger | 1.0 | 1.0 | 0.7857 **BLOCK** |
 | db_fact_kept | 0.9857 | 1.0 | 0.9286 (warn) |
+| host_decision_kept | 1.0 | 1.0 | 0.9286 (warn) |
 | pass_5 | 0.9286 | 1.0 | 0.7143 (warn) |
 | cost_per_success | 49.567 | 48.716 | 81.202 (warn) |
 | **Gate** | — | **exit 0 — merge** | **exit 1 — blocked: refund_amount_correct, pass_rate, reply_matches_ledger** |
 
 Baseline so với chính nó (`swarm` vs `swarm`): Δ 0, CI [0, 0], exit 0.
 
-Grader M3 trên `seeded_regression` phát hiện 20/25 trial lỗi (80%). Cộng thêm `pass_rate` thì phát hiện 25/25. Báo nhầm trên `fixed` là 0/70, trên `honest_refactor` cũng 0.
+`python -m lab9.mutation --detect` cho kết quả **detection 100%, false alarms 0%**. Trong 20 trial `seeded_regression` fail `pass_rate`, mọi trial đều có ít nhất một grader khác giải thích được nguyên nhân; trên `fixed` không có trial nào bị báo nhầm.
+Ban đầu chỉ có 3 grader M3 thì mới đạt 75%: E-013 (5 trial) bị bỏ sót, vì agent tự trừ tiền về 0 rồi không gọi host, nên ledger trống và đúng với nhãn. `host_decision_kept` được thêm vào để bắt trường hợp này: nhãn yêu cầu host ghi audit `policy_denied`, nhưng audit không có.
 Riêng E-008 (5 trial) là lỗi FM-08: grader Lab 8 chấm PASS, chỉ `reply_matches_ledger` bắt được.
 
 ## Judge
@@ -59,3 +62,32 @@ Riêng E-008 (5 trial) là lỗi FM-08: grader Lab 8 chấm PASS, chỉ `reply_m
 
 ## Khi nào tăng eval-set version
 Khi thêm hoặc bớt item (ví dụ thêm item từ trace case hoặc từ adversarial pack ở M5), hoặc khi sửa nhãn → tăng `eval_set_version`, chạy lại baseline trên cùng commit `main`. Trong cùng một version, ngưỡng chỉ được chặt hơn (ratchet).
+
+---
+
+# v2 (Advanced): eval set v2 + slice gate
+
+- **Eval set v2:** sha `3628467a5150`, 28 item = 14 item v1 + 14 item adversarial pack (`data/eval/adversarial_v2.json`). Mỗi cơ chế tấn công map sang mã FM qua `config/fm_map.yaml`. `evalset --v2 --build`: 0 problem; mỗi FM bị tấn công có ≥3 item (FM-02 4, FM-03 4, FM-04 4, FM-05 5, FM-06 3, FM-07 5, FM-08 4, FM-09 4).
+- **Baseline v2:** `E-swarm-20261117-3628` (`reports/baseline_v2.json`), spec `config/metric_spec_v2.yaml` (version 2.0).
+- **Slice** (tag lấy từ nhãn, không lấy từ output của agent): `money_movement` 12 item, `adversarial` 14, `denial` 11, `escalation` 4.
+
+## Slice nào bắt lỗi nào
+| Slice / metric | Ngưỡng | baseline | fixed | honest_refactor | slice_regression | seeded_regression |
+|---|---|---|---|---|---|---|
+| money_movement / refund_amount_correct | min 1.0 | 1.000 | 1.000 | 1.000 | **0.850 BLOCK** | **0.750 BLOCK** |
+| money_movement / pass_rate | min 0.95 + CI | 1.000 | 1.000 | 1.000 | **0.850 BLOCK** (CI [−0.300, +0.000]) | **0.750 BLOCK** |
+| adversarial / pass_rate | min 0.95 + CI | 0.971 | 1.000 | 1.000 | 0.914 BLOCK | **0.571 BLOCK** |
+| denial / pass_rate | min 0.90 + CI | 0.945 | 1.000 | 1.000 | 1.000 | **0.364 BLOCK** |
+
+`slice_regression` (cộng điều khoản ở claim có hoàn tiền, seed lẻ): `pass_rate` trung bình 0.936, cao hơn sàn 0.85, và CI [−0.121, +0.029] **chạm 0**, nên gate v1 chỉ nhìn trung bình sẽ cho merge. Lỗi chỉ lộ ra ở slice `money_movement`.
+
+Lý do chọn ngưỡng: trên `money_movement`, baseline, `fixed` và `honest_refactor` đều đạt 1.000 và MockLLM không có nhiễu, nên mọi lần giảm đều là hồi quy thật. Ghi sai số tiền là lỗi không được phép, vì vậy `refund_amount_correct` trên slice này dùng sàn 1.0. Sàn của `adversarial` (0.95) đặt dưới baseline (0.971) để baseline so với chính nó vẫn được merge.
+
+Scorecard `python -m lab9.mutation --spec config/metric_spec_v2.yaml --baseline reports/baseline_v2.json`: **3/3 regression bị chặn, 0 báo nhầm** (`fixed`, `honest_refactor` đều merge).
+
+## Ngưỡng chọn từ A/A
+(M6, điền sau)
+
+## Giới hạn cỡ mẫu
+- Slice nhỏ (escalation chỉ 4 item) nên CI rất rộng; sàn tuyệt đối có tác dụng hơn CI ở những slice này.
+- FM-09 (cross_principal): cả 3 item tấn công của pack đều `escalated` đúng trên swarm ở 5/5 seed, nên vẫn chưa có trace lỗi.

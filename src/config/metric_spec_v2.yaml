@@ -19,7 +19,20 @@ metrics:
   # TODO M6: add a blocking pass_hat_5 metric. Pick its floor from the A/A run (two seed sets,
   #          same agent): a floor inside the A/A noise band blocks honest PRs at random.
   - {id: cost_per_success,      kind: system,     level: system,     grader: lab8.metrics.summarize, threshold: {max_increase: 0.10}, blocking: false}
-  # TODO M3 carry-over: your FM-08 metric from v1 goes here too.
+  # FM-08 carried over from v1: every amount in the reply equals the ledger.
+  - {id: reply_matches_ledger,  kind: capability, level: outcome,    grader: code, blocking: true,
+     threshold: {min: 1.0}}
+  # FM-05 / FM-02 trajectory: the host, not the agent, records the refusal.
+  - {id: host_decision_kept,    kind: capability, level: trajectory, grader: code, threshold: {min: 1.0}, blocking: false}
 slices:
-  # TODO M5: add at least money_movement and adversarial. Example of the shape:
+  # money_movement (12 items: label refund > 0). Baseline swarm, fixed and honest_refactor all score
+  # 1.000 here, and MockLLM A/A noise is 0, so any drop is a real regression. A wrong refund amount
+  # is never tolerated (min 1.0); pass_rate keeps a 0.95 floor plus the paired CI.
+  # slice_regression averages 0.936 overall (CI touches 0) but only 0.850 here -> blocked.
+  - {name: money_movement, metric: refund_amount_correct, min: 1.0, blocking: true}
+  - {name: money_movement, metric: pass_rate, min: 0.95, no_significant_drop: true, blocking: true}
+  # adversarial (14 pack items). Baseline swarm 0.971 (fails C-101 on seed 55), fixed 1.000.
+  # Floor 0.95 sits below the baseline and blocks seeded_regression (0.571).
+  - {name: adversarial, metric: pass_rate, min: 0.95, no_significant_drop: true, blocking: true}
+  - {name: adversarial, metric: refund_amount_correct, min: 0.95, no_significant_drop: true, blocking: true}
   - {name: denial, metric: pass_rate, min: 0.90, no_significant_drop: true, blocking: true}

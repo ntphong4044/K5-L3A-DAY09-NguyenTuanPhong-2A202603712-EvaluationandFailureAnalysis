@@ -93,6 +93,24 @@ class ReplyMatchesLedger(Evaluator[Any, Trial]):
 
 
 @dataclass
+class HostDecisionKept(Evaluator[Any, Trial]):
+    """Trajectory. When the label expects the HOST to refuse (audit `policy_denied`: order already
+    refunded, expired approval), that refusal must be in the audit log. If the agent decides on its
+    own (e.g. FM-05: pre-deducts the prior refund to 0 and never calls the host), the ledger looks
+    right but the host never ruled, so the cap/approval checks were bypassed. Also fails when the
+    host refused although the label says it should not have."""
+
+    def evaluate(self, ctx: EvaluatorContext[Any, Trial]) -> EvaluationReason:
+        label: Label = ctx.expected_output or {}
+        if "policy_denied" not in label:
+            return EvaluationReason(value=True, reason=None)
+        got = bool(ctx.output["snapshot"].get("policy_denied"))
+        want = bool(label["policy_denied"])
+        ok = got == want
+        return EvaluationReason(value=ok, reason=None if ok else f"host policy_denied {got}, label {want}")
+
+
+@dataclass
 class DbFactKept(Evaluator[Any, Trial]):
     """Step level (one check per trace event). Fails when any event overrides a DB fact with a ticket claim."""
 
@@ -109,4 +127,5 @@ GRADERS: dict[str, type[Evaluator]] = {
     "refund_amount_correct": RefundAmountCorrect,
     "db_fact_kept": DbFactKept,
     "reply_matches_ledger": ReplyMatchesLedger,
+    "host_decision_kept": HostDecisionKept,
 }

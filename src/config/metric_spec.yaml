@@ -19,3 +19,6 @@ metrics:
   # amount is never acceptable, so the floor is 1.0 (one mismatched trial blocks), graded by code.
   - {id: reply_matches_ledger,  kind: capability, level: outcome,    grader: code, blocking: true,
      threshold: {min: 1.0}}
+  # FM-05 / FM-02 trajectory: when the label expects the host to refuse, the refusal must be in the
+  # audit log (the agent must not decide in place of the host). Non-blocking: explains failures.
+  - {id: host_decision_kept,    kind: capability, level: trajectory, grader: code, threshold: {min: 1.0}, blocking: false}
