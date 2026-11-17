@@ -1,0 +1,4 @@
+# Eval data is hashed (eval_set_sha): keep LF on every OS so Windows and Linux CI get the same SHA.
+*.jsonl text eol=lf
+*.json  text eol=lf
+*.yaml  text eol=lf
