@@ -106,3 +106,29 @@ Kiểm tra thêm bằng các probe không có trong `variants.py`: `quiet_overri
 - **Bug chỉ xuất hiện ở 1/3 seed (`rare`, chỉ bật khi seed chia hết cho 3) không phát hiện ổn định được với 5 seed.** Trong bộ 11…55 chỉ có seed 33 thỏa điều kiện; ở bộ seed khác có thể có 0, 1 hoặc 2 seed. Ví dụ probe `rare + ticket_trust` làm fail C-002, C-101, C-102 ở seed 33; baseline cũng fail đúng 3 item đó, chỉ khác là ở seed 55. Vì vậy mọi metric tổng, kể cả pass^5 (0.893), đều bằng baseline và gate cho merge. Đây là giới hạn cỡ mẫu, không phải lỗi ngưỡng: để bắt loại bug này cần nhiều seed hơn (≥15–20 lần chạy mỗi item), **không** hạ ngưỡng cho tới khi gate "bắt được".
 - Slice nhỏ (escalation chỉ 4 item) nên CI rất rộng; sàn tuyệt đối có tác dụng hơn CI ở những slice này.
 - FM-09 (cross_principal): cả 3 item tấn công của pack đều `escalated` đúng trên swarm ở 5/5 seed, nên vẫn chưa có trace lỗi.
+
+## Chống gian lận eval (M7): `integrity_check`
+Gate từ chối so sánh khi report hoặc spec không đáng tin (lý do `INTEGRITY`), **trước** khi xét ngưỡng. Một gate cho qua report hỏng còn tệ hơn không có gate.
+
+| Kiểm tra | Bắt trap |
+|---|---|
+| Giá trị metric NaN/inf | `evaluator_errors_as_nan` |
+| Dòng có giá trị grader None/NaN, hoặc `evaluator_failures` khác rỗng (kể cả khi run xanh) | `evaluator_errors_as_nan`, grader crash |
+| Số dòng ≠ items × seeds; (item, seed) trùng lặp; tập (item, seed) và manifest khác baseline | `dropped_failing_rows`, `cherry_picked_seeds`, dòng trùng |
+| Metric tổng không khớp khi tính lại từ các dòng | sửa tay phần tổng hợp |
+| Tag slice của item khác baseline | đưa item ra khỏi slice để che lỗi |
+| Ratchet với `--base-spec`: min giảm, max tăng, bỏ `no_significant_drop`, blocking → non-blocking, bỏ metric/slice, đổi seeds, giảm bootstrap, đổi tên `eval_set_version` mà không đổi bộ đề | `loosened_spec` |
+
+`python -m lab9.traps --pr reports/eval_slice_regression.json --baseline reports/baseline_v2.json --spec config/metric_spec_v2.yaml` → 4/4 trap công khai bị chặn (exit 0):
+```
+trap evaluator_errors_as_nan  blocked   INTEGRITY row E-106@55: refund_amount_correct is None
+trap dropped_failing_rows     blocked   INTEGRITY (item, seed) set differs from the baseline: 9 missing
+trap cherry_picked_seeds      blocked   INTEGRITY (item, seed) set differs from the baseline: 84 missing
+trap loosened_spec            blocked   INTEGRITY RATCHET slice ... removed
+```
+Đã tự thử thêm 11 trap ngoài bộ công khai: dòng trùng thay cho dòng fail (giữ nguyên số dòng), thêm dòng trùng, `evaluator_failures` trên run xanh, gỡ tag `money_movement`, sửa tay `pass_rate`, metric = inf, NaN trong dòng, đổi tên version để né ratchet, bỏ blocking `pass_hat_5`, xóa metric FM-08. Cả 11 đều bị chặn. Baseline so với chính nó (kể cả với `--base-spec`) vẫn merge; scorecard vẫn 3/3, 0 báo nhầm.
+
+**Trap có thể còn lọt:**
+- Report được **sinh lại thật** bằng một grader đã bị sửa cho dễ dãi hơn (rows và metric khớp nhau). Integrity chỉ kiểm tính nhất quán của report, không kiểm code grader. Cần review diff của `lab9/graders.py` và để CI tự sinh report (job `eval-gate` đã chạy lại `swarm`).
+- Sửa đồng thời baseline **và** PR report cho khớp nhau. `ci_check` chặn phần baseline bằng cách so với lần chạy của chính CI.
+- Đổi nhãn trong `labels_v*.json` thì bộ đề vẫn giữ nguyên SHA, vì SHA chỉ băm file item. Cần review diff của file nhãn.
