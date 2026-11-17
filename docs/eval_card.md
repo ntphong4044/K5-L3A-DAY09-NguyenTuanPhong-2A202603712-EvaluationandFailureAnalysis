@@ -85,9 +85,24 @@ Lý do chọn ngưỡng: trên `money_movement`, baseline, `fixed` và `honest_r
 
 Scorecard `python -m lab9.mutation --spec config/metric_spec_v2.yaml --baseline reports/baseline_v2.json`: **3/3 regression bị chặn, 0 báo nhầm** (`fixed`, `honest_refactor` đều merge).
 
-## Ngưỡng chọn từ A/A
-(M6, điền sau)
+## Ngưỡng chọn từ A/A (M6)
+`python -m lab9.mutation --spec config/metric_spec_v2.yaml --aa 66,77,88,99,110`: cùng agent `swarm`, chạy trên 2 bộ seed (11…55 và 66…110). **Δ = +0.0000 ở mọi metric** (pass_rate 0.9786, pass_hat_5 0.8929, pass_at_5 1.0 ở cả hai bộ).
+
+- **Vì sao Δ = 0:** MockLLM là hàm tất định của (claim, seed). Lỗi được gài theo `seed % 5 == 0`, và cả hai bộ seed đều có đúng một seed thỏa điều kiện này (55 và 110), nên kết quả trùng nhau.
+- **Với LLM thật, dải nhiễu sẽ > 0:** cùng prompt và cùng seed vẫn có thể ra kết quả khác (do sampling, thay đổi phía nhà cung cấp, thứ tự tool call). Hai lần chạy A/A khi đó sẽ lệch nhau vài điểm %. Sàn phải đặt **ngoài** dải này; nếu đặt bên trong, PR trung thực sẽ bị chặn ngẫu nhiên. Với model thật, cần chạy A/A nhiều lần và đặt sàn thấp hơn baseline ít nhất bằng độ rộng dải đó.
+
+**Sàn `pass_hat_5` = 0.85 (blocking):**
+| | pass_rate | pass_hat_5 | pass_at_5 |
+|---|---|---|---|
+| baseline `swarm` | 0.979 | 0.893 (25/28) | 1.000 |
+| `fixed` / `honest_refactor` | 1.000 | 1.000 | 1.000 |
+| `flaky_regression` (lỗi làm tròn ở 1/5 seed) | 0.914 | **0.571 BLOCK** | 1.000 |
+
+`pass_rate` trung bình của `flaky_regression` (0.914) vẫn cao hơn sàn 0.85. `pass_at_5` thậm chí bằng 1.0, vì item nào cũng có ít nhất 1 lần chạy đúng. Chỉ `pass^5` (tỉ lệ item đúng ở **cả 5** seed) cho thấy agent không ổn định. Sàn 0.85 cao hơn mức tối thiểu 0.8, nằm ngoài dải A/A (0), và thấp hơn baseline 0.893 nên baseline so với chính nó vẫn merge. Thêm 1 item chập chờn (24/28 = 0.857) vẫn qua; thêm 2 item (23/28 = 0.821) thì bị chặn.
+
+Kiểm tra thêm bằng các probe không có trong `variants.py`: `quiet_override` (tin ticket nhưng không ghi event `model_override`), `misreport`/`sum_parts` chỉ ở 1/5 seed, `stale_clause`/`sibling_refund` ở seed lẻ đều bị chặn. `paraphrase + extra_lookup` vẫn merge.
 
 ## Giới hạn cỡ mẫu
+- **Bug chỉ xuất hiện ở 1/3 seed (`rare`, chỉ bật khi seed chia hết cho 3) không phát hiện ổn định được với 5 seed.** Trong bộ 11…55 chỉ có seed 33 thỏa điều kiện; ở bộ seed khác có thể có 0, 1 hoặc 2 seed. Ví dụ probe `rare + ticket_trust` làm fail C-002, C-101, C-102 ở seed 33; baseline cũng fail đúng 3 item đó, chỉ khác là ở seed 55. Vì vậy mọi metric tổng, kể cả pass^5 (0.893), đều bằng baseline và gate cho merge. Đây là giới hạn cỡ mẫu, không phải lỗi ngưỡng: để bắt loại bug này cần nhiều seed hơn (≥15–20 lần chạy mỗi item), **không** hạ ngưỡng cho tới khi gate "bắt được".
 - Slice nhỏ (escalation chỉ 4 item) nên CI rất rộng; sàn tuyệt đối có tác dụng hơn CI ở những slice này.
 - FM-09 (cross_principal): cả 3 item tấn công của pack đều `escalated` đúng trên swarm ở 5/5 seed, nên vẫn chưa có trace lỗi.
